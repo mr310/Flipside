@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: flipside
+    runtime: node
+    buildCommand: bun install && bun run build
+    startCommand: bun run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3010
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: ADMIN_SECRET
+        generateValue: true
+      - key: DB_PATH
+        value: /var/data/flipside.db
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
