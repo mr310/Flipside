@@ -2,6 +2,9 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { queries } from './db';
 import { createHash } from 'crypto';
+import { join } from 'path';
+
+const DIST = join(import.meta.dir, '../../dist/client');
 
 const app = new Hono();
 
@@ -109,14 +112,13 @@ app.route('/api/admin', admin);
 
 if (process.env.NODE_ENV === 'production') {
   app.get('/assets/*', async (c) => {
-    const filePath = `./dist/client${c.req.path}`;
-    const file = Bun.file(filePath);
+    const file = Bun.file(join(DIST, c.req.path));
     if (!(await file.exists())) return c.notFound();
     return new Response(file);
   });
 
   app.get('*', async () => {
-    const file = Bun.file('./dist/client/index.html');
+    const file = Bun.file(join(DIST, 'index.html'));
     return new Response(file, { headers: { 'Content-Type': 'text/html' } });
   });
 }
