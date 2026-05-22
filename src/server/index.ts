@@ -4,7 +4,7 @@ import { queries } from './db';
 import { createHash } from 'crypto';
 import { join } from 'path';
 
-const DIST = join(import.meta.dir, '../../dist/client');
+const DIST = join(process.cwd(), 'dist/client');
 
 const app = new Hono();
 
@@ -112,18 +112,28 @@ app.route('/api/admin', admin);
 
 if (process.env.NODE_ENV === 'production') {
   app.get('/assets/*', async (c) => {
-    const file = Bun.file(join(DIST, c.req.path));
-    if (!(await file.exists())) return c.notFound();
-    return new Response(file);
+    try {
+      const file = Bun.file(join(DIST, c.req.path));
+      if (!(await file.exists())) return c.notFound();
+      return new Response(file);
+    } catch {
+      return c.notFound();
+    }
   });
 
   app.get('*', async () => {
-    const file = Bun.file(join(DIST, 'index.html'));
-    return new Response(file, { headers: { 'Content-Type': 'text/html' } });
+    try {
+      const html = await Bun.file(join(DIST, 'index.html')).text();
+      return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    } catch (e) {
+      console.error('index.html non trovato in', DIST, e);
+      return new Response('Build non trovata. Esegui bun run build.', { status: 500 });
+    }
   });
 }
 
 const PORT = Number(process.env.PORT ?? 3010);
 console.log(`Server in ascolto sulla porta ${PORT}`);
+if (process.env.NODE_ENV === 'production') console.log(`Serving static files da: ${DIST}`);
 
 export default { port: PORT, fetch: app.fetch };
