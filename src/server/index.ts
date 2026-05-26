@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { queries } from './db';
 import { createHash } from 'crypto';
@@ -39,12 +39,75 @@ app.get('/api/sessions/:sessionId/buttons/:type', (c) => {
   return c.json(btn);
 });
 
+function getClientIp(c: Context): string | null {
+  const forwarded = c.req.header('x-forwarded-for');
+  if (forwarded) {
+    return forwarded.split(',')[0].trim() || null;
+  }
+  return (
+    c.req.header('x-real-ip') ??
+    c.req.header('cf-connecting-ip') ??
+    c.req.header('true-client-ip') ??
+    null
+  );
+}
+
+async function lookupIpLocation(ip: string | null) {
+  if (!ip) return null;
+
+  try {
+    const res = await fetch(`https://ipapi.co/${encodeURIComponent(ip)}/json/`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      country_name?: string;
+      region?: string;
+      city?: string;
+      latitude?: number;
+      longitude?: number;
+      error?: boolean;
+    };
+    if (data.error) return null;
+    return {
+      country: data.country_name ?? null,
+      region: data.region ?? null,
+      city: data.city ?? null,
+      latitude: typeof data.latitude === 'number' ? data.latitude : null,
+      longitude: typeof data.longitude === 'number' ? data.longitude : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 app.post('/api/sessions/:sessionId/buttons/:type/click', (c) => {
   const { sessionId, type } = c.req.param();
   const btn = queries.getButton.get(sessionId, type);
   if (!btn) return c.json({ error: 'Non trovato' }, 404);
   if (btn.is_disabled) return c.json({ error: 'Pulsante disabilitato' }, 403);
   queries.clickQR(sessionId, type);
+  return c.json({ success: true });
+});
+
+app.post('/api/visits', async (c) => {
+  const { latitude, longitude } = await c.req.json<{
+    latitude?: number | null;
+    longitude?: number | null;
+  }>();
+
+  const ipAddress = getClientIp(c);
+  const ipLocation = await lookupIpLocation(ipAddress);
+
+  queries.logVisit(
+    latitude ?? null,
+    longitude ?? null,
+    ipAddress,
+    ipLocation?.country ?? null,
+    ipLocation?.region ?? null,
+    ipLocation?.city ?? null,
+    ipLocation?.latitude ?? null,
+    ipLocation?.longitude ?? null,
+  );
+
   return c.json({ success: true });
 });
 
@@ -67,6 +130,12 @@ admin.get('/sessions/:id', (c) => {
   if (!session) return c.json({ error: 'Non trovato' }, 404);
   const buttons = queries.getButtons.all(session.id);
   return c.json({ ...session, buttons });
+});
+
+admin.get('/visits', (c) => {
+  const summary = queries.getVisitCount.get();
+  const visits = queries.getRecentVisits.all();
+  return c.json({ count: Number(summary.count ?? 0), visits });
 });
 
 admin.post('/sessions', async (c) => {

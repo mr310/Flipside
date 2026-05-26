@@ -29,6 +29,24 @@ export interface Button {
   qr_clicked: number;
 }
 
+export interface Visit {
+  id: string;
+  created_at: string;
+  latitude: number | null;
+  longitude: number | null;
+  ip_address: string | null;
+  ip_country: string | null;
+  ip_region: string | null;
+  ip_city: string | null;
+  ip_latitude: number | null;
+  ip_longitude: number | null;
+}
+
+export interface VisitSummary {
+  count: number;
+  visits: Visit[];
+}
+
 export interface SessionWithButtons extends Session {
   buttons: Button[];
 }
@@ -47,6 +65,13 @@ export const clickQR = (sessionId: string, type: string) =>
     json<{ success: boolean }>(r),
   );
 
+export const logVisit = (latitude?: number, longitude?: number) =>
+  fetch('/api/visits', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ latitude, longitude }),
+  }).then((r) => json<{ success: boolean }>(r));
+
 export const login = (password: string) =>
   fetch('/api/auth/login', {
     method: 'POST',
@@ -61,6 +86,9 @@ export const adminGetSession = (id: string) =>
   fetch(`/api/admin/sessions/${id}`, { headers: authHeader() }).then((r) =>
     json<SessionWithButtons>(r),
   );
+
+export const adminGetVisits = () =>
+  fetch('/api/admin/visits', { headers: authHeader() }).then((r) => json<VisitSummary>(r));
 
 export const adminCreateSession = (date: string, label: string) =>
   fetch('/api/admin/sessions', {

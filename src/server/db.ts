@@ -26,7 +26,38 @@ db.exec(`
     qr_clicked INTEGER NOT NULL DEFAULT 0,
     UNIQUE(session_id, type)
   );
+
+  CREATE TABLE IF NOT EXISTS site_visits (
+    id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    browser_latitude REAL,
+    browser_longitude REAL,
+    ip_address TEXT,
+    ip_country TEXT,
+    ip_region TEXT,
+    ip_city TEXT,
+    ip_latitude REAL,
+    ip_longitude REAL
+  );
 `);
+
+const existingSiteVisitColumns = new Set(
+  db.prepare<{ name: string }, []>('PRAGMA table_info(site_visits)').all().map((row) => row.name),
+);
+const addColumn = (name: string, definition: string) => {
+  if (!existingSiteVisitColumns.has(name)) {
+    db.exec(`ALTER TABLE site_visits ADD COLUMN ${name} ${definition}`);
+  }
+};
+
+addColumn('browser_latitude', 'REAL');
+addColumn('browser_longitude', 'REAL');
+addColumn('ip_address', 'TEXT');
+addColumn('ip_country', 'TEXT');
+addColumn('ip_region', 'TEXT');
+addColumn('ip_city', 'TEXT');
+addColumn('ip_latitude', 'REAL');
+addColumn('ip_longitude', 'REAL');
 
 const BUTTON_TYPES = ['play', 'ffw', 'playpause', 'stop'] as const;
 export type ButtonType = (typeof BUTTON_TYPES)[number];
@@ -60,6 +91,19 @@ export interface Button {
   link_url: string;
   is_disabled: number;
   qr_clicked: number;
+}
+
+export interface Visit {
+  id: string;
+  created_at: string;
+  latitude: number | null;
+  longitude: number | null;
+  ip_address: string | null;
+  ip_country: string | null;
+  ip_region: string | null;
+  ip_city: string | null;
+  ip_latitude: number | null;
+  ip_longitude: number | null;
 }
 
 export const queries = {
@@ -99,4 +143,37 @@ export const queries = {
   resetSession: db.prepare('UPDATE buttons SET is_disabled = 0, qr_clicked = 0 WHERE session_id = ?'),
 
   resetButton: db.prepare('UPDATE buttons SET is_disabled = 0, qr_clicked = 0 WHERE id = ?'),
+
+  logVisit(
+    browserLatitude: number | null,
+    browserLongitude: number | null,
+    ipAddress: string | null,
+    ipCountry: string | null,
+    ipRegion: string | null,
+    ipCity: string | null,
+    ipLatitude: number | null,
+    ipLongitude: number | null,
+  ) {
+    db.prepare(
+      'INSERT INTO site_visits (id, browser_latitude, browser_longitude, ip_address, ip_country, ip_region, ip_city, ip_latitude, ip_longitude) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    ).run(
+      crypto.randomUUID(),
+      browserLatitude,
+      browserLongitude,
+      ipAddress,
+      ipCountry,
+      ipRegion,
+      ipCity,
+      ipLatitude,
+      ipLongitude,
+    );
+  },
+
+  getVisitCount: db.prepare<{ count: number }, []>(
+    'SELECT COUNT(*) AS count FROM site_visits',
+  ),
+
+  getRecentVisits: db.prepare<Visit, []>(
+    'SELECT id, created_at, browser_latitude AS latitude, browser_longitude AS longitude, ip_address, ip_country, ip_region, ip_city, ip_latitude, ip_longitude FROM site_visits ORDER BY created_at DESC LIMIT 20',
+  ),
 };

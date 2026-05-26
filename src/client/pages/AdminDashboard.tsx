@@ -2,27 +2,40 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   adminGetSessions,
+  adminGetVisits,
   adminDeleteSession,
   adminResetSession,
   adminCreateSession,
   type Session,
+  type Visit,
 } from '../api';
 
 interface NewSessionForm { date: string; label: string }
 
 export default function AdminDashboard() {
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [visitCount, setVisitCount] = useState<number | null>(null);
+  const [recentVisits, setRecentVisits] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<NewSessionForm>({ date: '', label: '' });
   const [saving, setSaving] = useState(false);
   const navigate = useNavigate();
 
-  const load = () =>
-    adminGetSessions()
-      .then(setSessions)
-      .catch(() => navigate('/admin'))
-      .finally(() => setLoading(false));
+  const load = async () => {
+    setLoading(true);
+    try {
+      const sessionsResponse = await adminGetSessions();
+      const visitsResponse = await adminGetVisits();
+      setSessions(sessionsResponse);
+      setVisitCount(visitsResponse.count);
+      setRecentVisits(visitsResponse.visits);
+    } catch {
+      navigate('/admin');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => { load(); }, []);
 
@@ -60,6 +73,9 @@ export default function AdminDashboard() {
     return d.toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
+  const formatCoord = (value: number | null) =>
+    value == null ? 'N/A' : value.toFixed(4);
+
   return (
     <div className="page">
       <div className="section-header">
@@ -74,47 +90,109 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: '1rem',
+          marginBottom: '1rem',
+        }}
+      >
+        <div className="card" style={{ padding: '1rem' }}>
+          <p style={{ margin: 0, color: 'var(--muted)' }}>Visite totali</p>
+          <p style={{ margin: '0.5rem 0 0', fontSize: '2rem', fontFamily: 'VT323, monospace' }}>
+            {visitCount ?? '-'}
+          </p>
+        </div>
+        <div className="card" style={{ padding: '1rem' }}>
+          <p style={{ margin: 0, color: 'var(--muted)' }}>Ultime visite</p>
+          <p style={{ margin: '0.5rem 0 0', fontSize: '2rem', fontFamily: 'VT323, monospace' }}>
+            {recentVisits.length}
+          </p>
+        </div>
+      </div>
+
       {loading ? (
         <p className="loading">Caricamento...</p>
       ) : (
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th>Label</th>
-              <th>Azioni</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sessions.length === 0 ? (
+        <>
+          <table className="admin-table">
+            <thead>
               <tr>
-                <td colSpan={3} style={{ color: 'var(--muted)' }}>Nessuna sessione</td>
+                <th>Data</th>
+                <th>Label</th>
+                <th>Azioni</th>
               </tr>
-            ) : (
-              sessions.map((s) => (
-                <tr key={s.id}>
-                  <td style={{ fontFamily: 'VT323, monospace', fontSize: '1.1rem', color: 'var(--accent)' }}>
-                    {formatDate(s.date)}
-                  </td>
-                  <td style={{ color: 'var(--muted)' }}>{s.label}</td>
-                  <td>
-                    <div className="actions">
-                      <Link to={`/admin/sessions/${s.id}`}>
-                        <button className="btn btn-ghost btn-sm">Modifica</button>
-                      </Link>
-                      <button className="btn btn-ghost btn-sm" onClick={() => handleReset(s.id)}>
-                        Reset
-                      </button>
-                      <button className="btn btn-danger btn-sm" onClick={() => handleDelete(s.id)}>
-                        Elimina
-                      </button>
-                    </div>
-                  </td>
+            </thead>
+            <tbody>
+              {sessions.length === 0 ? (
+                <tr>
+                  <td colSpan={3} style={{ color: 'var(--muted)' }}>Nessuna sessione</td>
                 </tr>
-              ))
+              ) : (
+                sessions.map((s) => (
+                  <tr key={s.id}>
+                    <td style={{ fontFamily: 'VT323, monospace', fontSize: '1.1rem', color: 'var(--accent)' }}>
+                      {formatDate(s.date)}
+                    </td>
+                    <td style={{ color: 'var(--muted)' }}>{s.label}</td>
+                    <td>
+                      <div className="actions">
+                        <Link to={`/admin/sessions/${s.id}`}>
+                          <button className="btn btn-ghost btn-sm">Modifica</button>
+                        </Link>
+                        <button className="btn btn-ghost btn-sm" onClick={() => handleReset(s.id)}>
+                          Reset
+                        </button>
+                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(s.id)}>
+                          Elimina
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+
+          <div style={{ marginTop: '2rem' }}>
+            <h2>Ultime visite</h2>
+            {recentVisits.length === 0 ? (
+              <p style={{ color: 'var(--muted)' }}>Nessuna visita registrata.</p>
+            ) : (
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>IP</th>
+                    <th>IP posizione</th>
+                    <th>Browser coords</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentVisits.map((visit) => (
+                    <tr key={visit.id}>
+                      <td style={{ fontFamily: 'VT323, monospace', color: 'var(--accent)' }}>
+                        {visit.created_at}
+                      </td>
+                      <td>{visit.ip_address ?? 'N/A'}</td>
+                      <td>
+                        {visit.ip_city
+                          ? `${visit.ip_city}, ${visit.ip_region ?? ''} ${visit.ip_country ?? ''}`.trim()
+                          : 'N/A'}
+                      </td>
+                      <td>
+                        {visit.latitude != null && visit.longitude != null
+                          ? `${formatCoord(visit.latitude)}, ${formatCoord(visit.longitude)}`
+                          : 'N/A'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
-          </tbody>
-        </table>
+          </div>
+        </>
       )}
 
       {showModal && (
