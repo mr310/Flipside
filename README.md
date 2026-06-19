@@ -28,7 +28,7 @@ cp .env.example .env
 
 Edit `.env`:
 ```
-PORT=3001
+PORT=3010
 ADMIN_PASSWORD=your-secure-password
 ADMIN_SECRET=your-random-secret
 DB_PATH=./flipside.db
@@ -37,19 +37,19 @@ DB_PATH=./flipside.db
 ### Run
 
 ```bash
-# Start both API server (port 3001) and Vite dev server (port 5173) in parallel
+# Start both API server (port 3010) and Vite dev server (port 5177) in parallel
 bun run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173).
+Open [http://localhost:5177](http://localhost:5177).
 
-Admin panel: [http://localhost:5173/admin](http://localhost:5173/admin)
+Admin panel: [http://localhost:5177/admin](http://localhost:5177/admin)
 
 ### Individual processes
 
 ```bash
-bun run dev:server   # Hono API on :3001 (with --watch)
-bun run dev:client   # Vite on :5173 (proxies /api → :3001)
+bun run dev:server   # Hono API on :3010 (with --watch)
+bun run dev:client   # Vite on :5177 (proxies /api → :3010)
 ```
 
 ## Production build

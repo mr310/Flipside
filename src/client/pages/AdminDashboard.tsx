@@ -6,6 +6,7 @@ import {
   adminDeleteSession,
   adminResetSession,
   adminCreateSession,
+  adminDuplicateSession,
   type Session,
   type Visit,
 } from '../api';
@@ -60,6 +61,11 @@ export default function AdminDashboard() {
 
   const handleReset = async (id: string) => {
     await adminResetSession(id);
+    load();
+  };
+
+  const handleDuplicate = async (id: string) => {
+    await adminDuplicateSession(id);
     load();
   };
 
@@ -138,9 +144,12 @@ export default function AdminDashboard() {
                     <td style={{ color: 'var(--muted)' }}>{s.label}</td>
                     <td>
                       <div className="actions">
-                        <Link to={`/admin/sessions/${s.id}`}>
+                          <Link to={`/admin/sessions/${s.id}`}>
                           <button className="btn btn-ghost btn-sm">Modifica</button>
                         </Link>
+                        <button className="btn btn-ghost btn-sm" onClick={() => handleDuplicate(s.id)}>
+                          Duplica
+                        </button>
                         <button className="btn btn-ghost btn-sm" onClick={() => handleReset(s.id)}>
                           Reset
                         </button>

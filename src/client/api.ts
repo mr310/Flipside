@@ -104,6 +104,12 @@ export const adminUpdateSession = (id: string, date: string, label: string) =>
     body: JSON.stringify({ date, label }),
   }).then((r) => json<{ success: boolean }>(r));
 
+export const adminDuplicateSession = (id: string) =>
+  fetch(`/api/admin/sessions/${id}/duplicate`, {
+    method: 'POST',
+    headers: authHeader(),
+  }).then((r) => json<{ id: string }>(r));
+
 export const adminDeleteSession = (id: string) =>
   fetch(`/api/admin/sessions/${id}`, {
     method: 'DELETE',

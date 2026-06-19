@@ -144,6 +144,11 @@ admin.post('/sessions', async (c) => {
   return c.json({ id }, 201);
 });
 
+admin.post('/sessions/:id/duplicate', (c) => {
+  const id = queries.duplicateSession(c.req.param('id'));
+  return c.json({ id }, 201);
+});
+
 admin.put('/sessions/:id', async (c) => {
   const { date, label } = await c.req.json<{ date: string; label: string }>();
   queries.updateSession.run(date, label, c.req.param('id'));

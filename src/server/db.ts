@@ -118,6 +118,33 @@ export const queries = {
     return id;
   },
 
+  duplicateSession(existingSessionId: string): string {
+    const session = db.prepare<Session, [string]>('SELECT * FROM sessions WHERE id = ?').get(existingSessionId);
+    if (!session) throw new Error('Sessione non trovata');
+
+    const newSessionId = crypto.randomUUID();
+    db.prepare('INSERT INTO sessions (id, date, label) VALUES (?, ?, ?)')
+      .run(newSessionId, session.date, session.label);
+
+    const buttons = db.prepare<Button, [string]>('SELECT * FROM buttons WHERE session_id = ?').all(existingSessionId);
+    for (const button of buttons) {
+      db.prepare(
+        'INSERT INTO buttons (id, session_id, type, display_label, page_text, link_url, is_disabled, qr_clicked) VALUES (?, ?, ?, ?, ?, ?, ?, ?)' 
+      ).run(
+        crypto.randomUUID(),
+        newSessionId,
+        button.type,
+        button.display_label,
+        button.page_text,
+        button.link_url,
+        0,
+        0,
+      );
+    }
+
+    return newSessionId;
+  },
+
   updateSession: db.prepare('UPDATE sessions SET date = ?, label = ? WHERE id = ?'),
 
   deleteSession: db.prepare('DELETE FROM sessions WHERE id = ?'),
