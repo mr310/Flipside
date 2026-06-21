@@ -5,6 +5,7 @@ import {
   adminUpdateSession,
   adminUpdateButton,
   adminResetButton,
+  adminUpdateSessionGallery,
   type SessionWithButtons,
   type Button,
 } from '../api';
@@ -117,6 +118,9 @@ export default function AdminSessionEditor() {
   const [editDate, setEditDate] = useState('');
   const [editLabel, setEditLabel] = useState('');
   const [savingMeta, setSavingMeta] = useState(false);
+  const [galleryFolderPath, setGalleryFolderPath] = useState('');
+  const [galleryPhoneNumbers, setGalleryPhoneNumbers] = useState('');
+  const [savingGallery, setSavingGallery] = useState(false);
 
   const load = () => {
     if (!id) return;
@@ -125,6 +129,8 @@ export default function AdminSessionEditor() {
         setSession(s);
         setEditDate(s.date);
         setEditLabel(s.label);
+        setGalleryFolderPath(s.gallery_folder_path || '');
+        setGalleryPhoneNumbers(s.gallery_phone_numbers || '');
       })
       .catch(() => navigate('/admin'))
       .finally(() => setLoading(false));
@@ -140,6 +146,17 @@ export default function AdminSessionEditor() {
       load();
     } finally {
       setSavingMeta(false);
+    }
+  };
+
+  const saveGallery = async () => {
+    if (!id) return;
+    setSavingGallery(true);
+    try {
+      await adminUpdateSessionGallery(id, galleryFolderPath || null, galleryPhoneNumbers || null);
+      load();
+    } finally {
+      setSavingGallery(false);
     }
   };
 
@@ -175,6 +192,35 @@ export default function AdminSessionEditor() {
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
           <button className="btn btn-primary btn-sm" onClick={saveMeta} disabled={savingMeta}>
             {savingMeta ? 'Salvo...' : 'Salva metadati'}
+          </button>
+        </div>
+      </div>
+
+      <div className="button-editor" style={{ marginBottom: '2rem' }}>
+        <div className="button-editor-header">
+          <span className="button-editor-title">🖼 Galleria Foto</span>
+        </div>
+        <div className="button-editor-fields">
+          <div className="form-group" style={{ margin: 0 }}>
+            <label>Cartella foto (percorso server) o URL galleria</label>
+            <input
+              value={galleryFolderPath}
+              onChange={(e) => setGalleryFolderPath(e.target.value)}
+              placeholder="/var/data/gallery/sessione  oppure  https://..."
+            />
+          </div>
+          <div className="form-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
+            <label>Chat ID Telegram (separati da virgola)</label>
+            <input
+              value={galleryPhoneNumbers}
+              onChange={(e) => setGalleryPhoneNumbers(e.target.value)}
+              placeholder="123456789, -987654321"
+            />
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
+          <button className="btn btn-primary btn-sm" onClick={saveGallery} disabled={savingGallery}>
+            {savingGallery ? 'Salvo...' : 'Salva galleria'}
           </button>
         </div>
       </div>

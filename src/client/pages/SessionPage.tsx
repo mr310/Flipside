@@ -74,6 +74,14 @@ export default function SessionPage() {
           </div>
         </div>
       </div>
+
+      {session.gallery_folder_path && (
+        <div style={{ marginTop: '2rem', textAlign: 'center' }}>
+          <Link to={`/session/${session.id}/gallery`}>
+            <button className="btn btn-primary">🖼 Galleria Foto</button>
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

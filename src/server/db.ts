@@ -12,6 +12,8 @@ db.exec(`
     id TEXT PRIMARY KEY,
     date TEXT NOT NULL,
     label TEXT NOT NULL,
+    gallery_folder_path TEXT,
+    gallery_phone_numbers TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -39,7 +41,37 @@ db.exec(`
     ip_latitude REAL,
     ip_longitude REAL
   );
+
+  CREATE TABLE IF NOT EXISTS gallery_otps (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    otp_code TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL,
+    is_used INTEGER NOT NULL DEFAULT 0,
+    used_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS gallery_tokens (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    token TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL
+  );
 `);
+
+const existingSessionColumns = new Set(
+  db.prepare<{ name: string }, []>('PRAGMA table_info(sessions)').all().map((row) => row.name),
+);
+const addSessionColumn = (name: string, definition: string) => {
+  if (!existingSessionColumns.has(name)) {
+    db.exec(`ALTER TABLE sessions ADD COLUMN ${name} ${definition}`);
+  }
+};
+
+addSessionColumn('gallery_folder_path', 'TEXT');
+addSessionColumn('gallery_phone_numbers', 'TEXT');
 
 const existingSiteVisitColumns = new Set(
   db.prepare<{ name: string }, []>('PRAGMA table_info(site_visits)').all().map((row) => row.name),
@@ -79,6 +111,8 @@ export interface Session {
   id: string;
   date: string;
   label: string;
+  gallery_folder_path: string | null;
+  gallery_phone_numbers: string | null;
   created_at: string;
 }
 
@@ -147,6 +181,8 @@ export const queries = {
 
   updateSession: db.prepare('UPDATE sessions SET date = ?, label = ? WHERE id = ?'),
 
+  updateSessionGallery: db.prepare('UPDATE sessions SET gallery_folder_path = ?, gallery_phone_numbers = ? WHERE id = ?'),
+
   deleteSession: db.prepare('DELETE FROM sessions WHERE id = ?'),
 
   getButtons: db.prepare<Button, [string]>(
@@ -202,5 +238,34 @@ export const queries = {
 
   getRecentVisits: db.prepare<Visit, []>(
     'SELECT id, created_at, browser_latitude AS latitude, browser_longitude AS longitude, ip_address, ip_country, ip_region, ip_city, ip_latitude, ip_longitude FROM site_visits ORDER BY created_at DESC LIMIT 20',
+  ),
+
+  generateGalleryOTP(sessionId: string): string {
+    const otp = Math.random().toString().slice(2, 8).padStart(6, '0');
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    db.prepare('INSERT INTO gallery_otps (id, session_id, otp_code, expires_at) VALUES (?, ?, ?, ?)')
+      .run(crypto.randomUUID(), sessionId, otp, expiresAt);
+    return otp;
+  },
+
+  validateGalleryOTP(sessionId: string, otpCode: string): boolean {
+    const record = db.prepare<any, [string, string]>(
+      'SELECT * FROM gallery_otps WHERE session_id = ? AND otp_code = ? AND is_used = 0 AND expires_at > datetime(\'now\') LIMIT 1'
+    ).get(sessionId, otpCode);
+    if (!record) return false;
+    db.prepare('UPDATE gallery_otps SET is_used = 1, used_at = datetime(\'now\') WHERE id = ?').run(record.id);
+    return true;
+  },
+
+  generateGalleryToken(sessionId: string): string {
+    const token = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    db.prepare('INSERT INTO gallery_tokens (id, session_id, token, expires_at) VALUES (?, ?, ?, ?)')
+      .run(crypto.randomUUID(), sessionId, token, expiresAt);
+    return token;
+  },
+
+  getGalleryToken: db.prepare<{ id: string; session_id: string; token: string; expires_at: string }, [string, string]>(
+    "SELECT * FROM gallery_tokens WHERE session_id = ? AND token = ? AND expires_at > datetime('now') LIMIT 1"
   ),
 };

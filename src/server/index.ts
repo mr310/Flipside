@@ -2,7 +2,8 @@ import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { queries } from './db';
 import { createHash } from 'crypto';
-import { join } from 'path';
+import { join, resolve, extname } from 'path';
+import { readdir } from 'fs/promises';
 
 const DIST = join(process.cwd(), 'dist/client');
 
@@ -13,6 +14,46 @@ app.use('/api/*', cors());
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? 'admin123';
 const ADMIN_SECRET = process.env.ADMIN_SECRET ?? 'flipside-dev-secret';
 const VALID_TOKEN = createHash('sha256').update(ADMIN_PASSWORD + ADMIN_SECRET).digest('hex');
+
+// ── Telegram ─────────────────────────────────────────────────────────────────
+
+let telegramBotUsername: string | null = null;
+(async () => {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+    const data = await res.json() as { ok: boolean; result?: { username: string } };
+    if (data.ok && data.result?.username) {
+      telegramBotUsername = data.result.username;
+      console.log(`[Telegram] Bot pronto: @${telegramBotUsername}`);
+    }
+  } catch (err) {
+    console.error('[Telegram] Impossibile ottenere info bot:', err);
+  }
+})();
+
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.avif', '.tiff', '.tif']);
+
+async function sendTelegram(chatId: string, text: string): Promise<void> {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+
+  if (!botToken) {
+    console.log(`[Telegram fallback] chat_id: ${chatId} | text: ${text}`);
+    return;
+  }
+
+  const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { description?: string };
+    throw new Error(`Telegram error: ${err.description ?? res.statusText}`);
+  }
+}
 
 // ── Public routes ────────────────────────────────────────────────────────────
 
@@ -37,6 +78,116 @@ app.get('/api/sessions/:sessionId/buttons/:type', (c) => {
   const btn = queries.getButton.get(c.req.param('sessionId'), c.req.param('type'));
   if (!btn) return c.json({ error: 'Non trovato' }, 404);
   return c.json(btn);
+});
+
+app.get('/api/sessions/:sessionId/gallery/info', (c) => {
+  const session = queries.getSession.get(c.req.param('sessionId'));
+  if (!session) return c.json({ error: 'Non trovato' }, 404);
+  return c.json({
+    has_gallery: !!session.gallery_folder_path,
+    bot_username: telegramBotUsername,
+    bot_link: telegramBotUsername ? `https://t.me/${telegramBotUsername}` : null,
+  });
+});
+
+app.post('/api/sessions/:sessionId/gallery/request-otp', async (c) => {
+  const sessionId = c.req.param('sessionId');
+  const session = queries.getSession.get(sessionId);
+  if (!session) return c.json({ error: 'Sessione non trovata' }, 404);
+  if (!session.gallery_folder_path) return c.json({ error: 'Galleria non configurata' }, 404);
+  if (!session.gallery_phone_numbers) return c.json({ error: 'Nessun numero configurato per questa galleria' }, 404);
+
+  const otp = queries.generateGalleryOTP(sessionId);
+  const chatIds = session.gallery_phone_numbers.split(',').map((p: string) => p.trim()).filter(Boolean);
+  const message = `Il tuo codice per la galleria "${session.label}" è: ${otp}\nValido per 5 minuti.`;
+
+  const errors: string[] = [];
+  for (const chatId of chatIds) {
+    await sendTelegram(chatId, message).catch((err: Error) => {
+      console.error(`[Telegram] Errore invio a ${chatId}:`, err.message);
+      errors.push(chatId);
+    });
+  }
+
+  if (errors.length === chatIds.length) {
+    return c.json({ error: 'Impossibile inviare il messaggio Telegram. Riprova.' }, 500);
+  }
+
+  return c.json({ success: true, message: 'OTP inviato via Telegram' });
+});
+
+app.post('/api/sessions/:sessionId/gallery/verify-otp', async (c) => {
+  const { otp_code } = await c.req.json<{ otp_code: string }>();
+  const sessionId = c.req.param('sessionId');
+
+  const isValid = queries.validateGalleryOTP(sessionId, otp_code);
+  if (!isValid) return c.json({ error: 'OTP non valido o scaduto' }, 401);
+
+  const session = queries.getSession.get(sessionId);
+  if (!session) return c.json({ error: 'Sessione non trovata' }, 404);
+
+  const gallery_token = queries.generateGalleryToken(sessionId);
+
+  return c.json({ success: true, folder_path: session.gallery_folder_path, gallery_token });
+});
+
+app.get('/api/sessions/:sessionId/gallery/photos', async (c) => {
+  const sessionId = c.req.param('sessionId');
+  const token = c.req.query('token');
+  if (!token) return c.json({ error: 'Token mancante' }, 401);
+
+  const access = queries.getGalleryToken.get(sessionId, token);
+  if (!access) return c.json({ error: 'Token non valido o scaduto' }, 401);
+
+  const session = queries.getSession.get(sessionId);
+  if (!session?.gallery_folder_path) return c.json({ error: 'Galleria non configurata' }, 404);
+
+  const folderPath = session.gallery_folder_path;
+
+  if (folderPath.startsWith('http://') || folderPath.startsWith('https://')) {
+    return c.json({ type: 'external', url: folderPath, photos: [] });
+  }
+
+  try {
+    const files = await readdir(folderPath);
+    const photos = files
+      .filter(f => IMAGE_EXTENSIONS.has(extname(f).toLowerCase()))
+      .sort()
+      .map(f => ({
+        name: f,
+        url: `/api/gallery/image?session=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(token)}&file=${encodeURIComponent(f)}`,
+      }));
+    return c.json({ type: 'local', photos });
+  } catch {
+    return c.json({ error: 'Impossibile leggere la cartella galleria' }, 500);
+  }
+});
+
+app.get('/api/gallery/image', async (c) => {
+  const sessionId = c.req.query('session');
+  const token = c.req.query('token');
+  const file = c.req.query('file');
+  if (!sessionId || !token || !file) return c.json({ error: 'Parametri mancanti' }, 400);
+
+  const access = queries.getGalleryToken.get(sessionId, token);
+  if (!access) return c.json({ error: 'Token non valido' }, 401);
+
+  const session = queries.getSession.get(sessionId);
+  if (!session?.gallery_folder_path) return c.notFound();
+
+  const folderPath = session.gallery_folder_path;
+  const safeName = file.replace(/\.\./g, '');
+  const imagePath = join(folderPath, safeName);
+  const resolvedImage = resolve(imagePath);
+  const resolvedFolder = resolve(folderPath);
+
+  if (!resolvedImage.startsWith(resolvedFolder + '/') && resolvedImage !== resolvedFolder) {
+    return c.json({ error: 'Percorso non valido' }, 400);
+  }
+
+  const bunFile = Bun.file(resolvedImage);
+  if (!(await bunFile.exists())) return c.notFound();
+  return new Response(bunFile);
 });
 
 function getClientIp(c: Context): string | null {
@@ -152,6 +303,15 @@ admin.post('/sessions/:id/duplicate', (c) => {
 admin.put('/sessions/:id', async (c) => {
   const { date, label } = await c.req.json<{ date: string; label: string }>();
   queries.updateSession.run(date, label, c.req.param('id'));
+  return c.json({ success: true });
+});
+
+admin.put('/sessions/:id/gallery', async (c) => {
+  const { gallery_folder_path, gallery_phone_numbers } = await c.req.json<{ 
+    gallery_folder_path: string | null; 
+    gallery_phone_numbers: string | null;
+  }>();
+  queries.updateSessionGallery.run(gallery_folder_path, gallery_phone_numbers, c.req.param('id'));
   return c.json({ success: true });
 });
 

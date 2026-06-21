@@ -15,6 +15,8 @@ export interface Session {
   id: string;
   date: string;
   label: string;
+  gallery_folder_path: string | null;
+  gallery_phone_numbers: string | null;
   created_at: string;
 }
 
@@ -65,6 +67,44 @@ export const clickQR = (sessionId: string, type: string) =>
     json<{ success: boolean }>(r),
   );
 
+export interface GalleryInfo {
+  has_gallery: boolean;
+  bot_username: string | null;
+  bot_link: string | null;
+}
+
+export const getGalleryInfo = (sessionId: string) =>
+  fetch(`/api/sessions/${sessionId}/gallery/info`).then((r) => json<GalleryInfo>(r));
+
+export const requestGalleryOTP = (sessionId: string) =>
+  fetch(`/api/sessions/${sessionId}/gallery/request-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  }).then((r) => json<{ success: boolean; message: string }>(r));
+
+export const verifyGalleryOTP = (sessionId: string, otp_code: string) =>
+  fetch(`/api/sessions/${sessionId}/gallery/verify-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ otp_code }),
+  }).then((r) => json<{ success: boolean; folder_path: string; gallery_token: string }>(r));
+
+export interface GalleryPhoto {
+  name: string;
+  url: string;
+}
+
+export interface GalleryPhotosResult {
+  type: 'local' | 'external';
+  photos: GalleryPhoto[];
+  url?: string;
+}
+
+export const getGalleryPhotos = (sessionId: string, token: string) =>
+  fetch(`/api/sessions/${sessionId}/gallery/photos?token=${encodeURIComponent(token)}`).then((r) =>
+    json<GalleryPhotosResult>(r),
+  );
+
 export const logVisit = (latitude?: number, longitude?: number) =>
   fetch('/api/visits', {
     method: 'POST',
@@ -102,6 +142,13 @@ export const adminUpdateSession = (id: string, date: string, label: string) =>
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeader() },
     body: JSON.stringify({ date, label }),
+  }).then((r) => json<{ success: boolean }>(r));
+
+export const adminUpdateSessionGallery = (id: string, gallery_folder_path: string | null, gallery_phone_numbers: string | null) =>
+  fetch(`/api/admin/sessions/${id}/gallery`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeader() },
+    body: JSON.stringify({ gallery_folder_path, gallery_phone_numbers }),
   }).then((r) => json<{ success: boolean }>(r));
 
 export const adminDuplicateSession = (id: string) =>

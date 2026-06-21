@@ -7,6 +7,7 @@ import ButtonPage from './pages/ButtonPage';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminSessionEditor from './pages/AdminSessionEditor';
+import GalleryPage from './pages/GalleryPage';
 
 function AppRoutes() {
   const location = useLocation();
@@ -39,6 +40,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/session/:id" element={<SessionPage />} />
+      <Route path="/session/:sessionId/gallery" element={<GalleryPage />} />
       <Route path="/session/:sessionId/button/:type" element={<ButtonPage />} />
       <Route path="/admin" element={<AdminLogin />} />
       <Route path="/admin/dashboard" element={<AdminDashboard />} />
