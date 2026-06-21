@@ -147,7 +147,7 @@ export default function AdminDashboard() {
           <div className="button-editor-header">
             <span className="button-editor-title">Email</span>
             <span className={`status-badge ${emailStatus.configured ? 'status-ok' : 'status-disabled'}`}>
-              {emailStatus.configured ? emailStatus.from : 'API key mancante'}
+              {emailStatus.configured ? emailStatus.from : 'Non configurato'}
             </span>
           </div>
 

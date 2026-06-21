@@ -37,7 +37,7 @@ async function sendEmail(to: string, subject: string, text: string): Promise<voi
     console.log(`[Email fallback] To: ${to} | Subject: ${subject} | Body: ${text}`);
     return;
   }
-  const from = process.env.EMAIL_FROM ?? `FlipSide <${process.env.GMAIL_USER}>`;
+  const from = process.env.EMAIL_FROM || `FlipSide <${process.env.GMAIL_USER}>`;
   await transporter.sendMail({ from, to, subject, text });
 }
 
@@ -323,8 +323,8 @@ admin.get('/email/status', (c) => {
   const user = process.env.GMAIL_USER;
   const pass = process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) return c.json({ configured: false, error: 'GMAIL_USER o GMAIL_APP_PASSWORD non impostati' });
-  const from = process.env.EMAIL_FROM ?? `FlipSide <${user}>`;
-  return c.json({ configured: true, from });
+  const from = process.env.EMAIL_FROM || `FlipSide <${user}>`;
+  return c.json({ configured: true, provider: 'Gmail', from });
 });
 
 admin.post('/email/test', async (c) => {
