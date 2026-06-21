@@ -78,7 +78,7 @@ export default function GalleryPage() {
       {step === 'request' && (
         <div className="button-editor">
           <p style={{ margin: '0 0 1rem', color: 'var(--muted)' }}>
-            Riceverai un codice OTP via email per accedere alla galleria.
+            Riceverai un codice OTP via Telegram per accedere alla galleria.
           </p>
           {error && <div style={{ color: 'var(--danger)', marginBottom: '1rem' }}>{error}</div>}
           <button className="btn btn-primary" onClick={handleRequestOTP} disabled={loading}>
@@ -90,7 +90,7 @@ export default function GalleryPage() {
       {step === 'verify' && (
         <div className="button-editor">
           <p style={{ margin: 0, color: 'var(--muted)', marginBottom: '1rem' }}>
-            Inserisci il codice OTP ricevuto via email.
+            Inserisci il codice OTP ricevuto via Telegram.
           </p>
           {error && <div style={{ color: 'var(--danger)', marginBottom: '1rem' }}>{error}</div>}
           <div className="form-group">

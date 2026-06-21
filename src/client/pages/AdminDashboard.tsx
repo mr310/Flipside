@@ -7,11 +7,11 @@ import {
   adminResetSession,
   adminCreateSession,
   adminDuplicateSession,
-  adminEmailStatus,
-  adminEmailTest,
+  adminTelegramStatus,
+  adminTelegramTest,
   type Session,
   type Visit,
-  type EmailStatus,
+  type TelegramStatus,
 } from '../api';
 
 interface NewSessionForm { date: string; label: string }
@@ -24,10 +24,10 @@ export default function AdminDashboard() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<NewSessionForm>({ date: '', label: '' });
   const [saving, setSaving] = useState(false);
-  const [emailStatus, setEmailStatus] = useState<EmailStatus | null>(null);
-  const [emailTestAddr, setEmailTestAddr] = useState('');
-  const [emailTestResult, setEmailTestResult] = useState<string | null>(null);
-  const [emailTesting, setEmailTesting] = useState(false);
+  const [tgStatus, setTgStatus] = useState<TelegramStatus | null>(null);
+  const [tgTestAddr, setTgTestAddr] = useState('');
+  const [tgTestResult, setTgTestResult] = useState<string | null>(null);
+  const [tgTesting, setTgTesting] = useState(false);
   const navigate = useNavigate();
 
   const load = async () => {
@@ -47,7 +47,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     load();
-    adminEmailStatus().then(setEmailStatus).catch(() => {});
+    adminTelegramStatus().then(setTgStatus).catch(() => {});
   }, []);
 
   const handleCreate = async () => {
@@ -79,17 +79,17 @@ export default function AdminDashboard() {
     load();
   };
 
-  const handleEmailTest = async () => {
-    if (!emailTestAddr.trim()) return;
-    setEmailTesting(true);
-    setEmailTestResult(null);
+  const handleTgTest = async () => {
+    if (!tgTestAddr.trim()) return;
+    setTgTesting(true);
+    setTgTestResult(null);
     try {
-      const res = await adminEmailTest(emailTestAddr.trim());
-      setEmailTestResult('success' in res ? '✓ Email inviata!' : `✗ ${(res as { error: string }).error}`);
+      const res = await adminTelegramTest(tgTestAddr.trim());
+      setTgTestResult('success' in res ? '✓ Messaggio inviato!' : `✗ ${(res as { error: string }).error}`);
     } catch (err) {
-      setEmailTestResult(`✗ ${(err as Error).message}`);
+      setTgTestResult(`✗ ${(err as Error).message}`);
     } finally {
-      setEmailTesting(false);
+      setTgTesting(false);
     }
   };
 
@@ -142,40 +142,40 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {emailStatus && (
+      {tgStatus && (
         <div className="button-editor" style={{ marginBottom: '1.5rem' }}>
           <div className="button-editor-header">
-            <span className="button-editor-title">Email</span>
-            <span className={`status-badge ${emailStatus.configured ? 'status-ok' : 'status-disabled'}`}>
-              {emailStatus.configured ? emailStatus.from : 'Non configurato'}
+            <span className="button-editor-title">Telegram</span>
+            <span className={`status-badge ${tgStatus.configured ? 'status-ok' : 'status-disabled'}`}>
+              {tgStatus.configured ? 'Configurato' : 'Non configurato'}
             </span>
           </div>
 
-          {!emailStatus.configured && (
+          {!tgStatus.configured && (
             <p style={{ margin: '0.5rem 0 0', color: 'var(--danger)', fontSize: '0.85rem' }}>
-              Imposta <code>RESEND_API_KEY</code> e <code>EMAIL_FROM</code> nelle variabili d'ambiente.
+              {tgStatus.error ?? 'Imposta TELEGRAM_API_ID, TELEGRAM_API_HASH e TELEGRAM_SESSION nelle variabili d\'ambiente.'}
             </p>
           )}
-          {emailStatus.configured && (
+          {tgStatus.configured && (
             <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '200px' }}>
-                <label>Indirizzo di test</label>
+                <label>Destinatario di test</label>
                 <input
-                  type="email"
-                  value={emailTestAddr}
-                  onChange={(e) => setEmailTestAddr(e.target.value)}
-                  placeholder="test@esempio.com"
+                  type="text"
+                  value={tgTestAddr}
+                  onChange={(e) => setTgTestAddr(e.target.value)}
+                  placeholder="+393001234567 o @username"
                 />
               </div>
-              <button className="btn btn-ghost btn-sm" onClick={handleEmailTest} disabled={emailTesting}>
-                {emailTesting ? 'Invio...' : 'Invia test'}
+              <button className="btn btn-ghost btn-sm" onClick={handleTgTest} disabled={tgTesting}>
+                {tgTesting ? 'Invio...' : 'Invia test'}
               </button>
-              {emailTestResult && (
+              {tgTestResult && (
                 <span style={{
                   fontSize: '0.85rem',
-                  color: emailTestResult.startsWith('✓') ? 'var(--accent)' : 'var(--danger)',
+                  color: tgTestResult.startsWith('✓') ? 'var(--accent)' : 'var(--danger)',
                 }}>
-                  {emailTestResult}
+                  {tgTestResult}
                 </span>
               )}
             </div>

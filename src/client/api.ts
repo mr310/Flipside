@@ -179,19 +179,18 @@ export const adminResetButton = (id: string) =>
     headers: authHeader(),
   }).then((r) => json<{ success: boolean }>(r));
 
-export interface EmailStatus {
+export interface TelegramStatus {
   configured: boolean;
-  from?: string;
   error?: string;
 }
 
-export const adminEmailStatus = () =>
-  fetch('/api/admin/email/status', { headers: authHeader() }).then((r) =>
-    json<EmailStatus>(r),
+export const adminTelegramStatus = () =>
+  fetch('/api/admin/telegram/status', { headers: authHeader() }).then((r) =>
+    json<TelegramStatus>(r),
   );
 
-export const adminEmailTest = (to: string) =>
-  fetch('/api/admin/email/test', {
+export const adminTelegramTest = (to: string) =>
+  fetch('/api/admin/telegram/test', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeader() },
     body: JSON.stringify({ to }),

@@ -4,7 +4,8 @@ import { queries } from './db';
 import { createHash } from 'crypto';
 import { join, resolve, extname } from 'path';
 import { readdir } from 'fs/promises';
-import nodemailer from 'nodemailer';
+import { TelegramClient } from 'telegram';
+import { StringSession } from 'telegram/sessions';
 
 const DIST = join(process.cwd(), 'dist/client');
 
@@ -16,28 +17,31 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? 'admin123';
 const ADMIN_SECRET = process.env.ADMIN_SECRET ?? 'flipside-dev-secret';
 const VALID_TOKEN = createHash('sha256').update(ADMIN_PASSWORD + ADMIN_SECRET).digest('hex');
 
-// ── Email (Gmail SMTP) ───────────────────────────────────────────────────────
+// ── Telegram (GramJS userbot) ────────────────────────────────────────────────
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.avif', '.tiff', '.tif']);
 
-let _transporter: nodemailer.Transporter | null = null;
+let _tgClient: TelegramClient | null = null;
 
-function getTransporter(): nodemailer.Transporter | null {
-  if (_transporter) return _transporter;
-  const user = process.env.GMAIL_USER;
-  const pass = process.env.GMAIL_APP_PASSWORD;
-  if (!user || !pass) return null;
-  _transporter = nodemailer.createTransport({ service: 'gmail', auth: { user, pass } });
-  return _transporter;
+async function getTelegramClient(): Promise<TelegramClient> {
+  if (_tgClient?.connected) return _tgClient;
+
+  const apiId   = parseInt(process.env.TELEGRAM_API_ID   ?? '');
+  const apiHash = process.env.TELEGRAM_API_HASH ?? '';
+  const session = process.env.TELEGRAM_SESSION  ?? '';
+
+  if (!apiId || !apiHash || !session) {
+    throw new Error('Telegram non configurato: imposta TELEGRAM_API_ID, TELEGRAM_API_HASH e TELEGRAM_SESSION');
+  }
+
+  _tgClient = new TelegramClient(new StringSession(session), apiId, apiHash, { connectionRetries: 3 });
+  await _tgClient.connect();
+  return _tgClient;
 }
 
-async function sendEmail(to: string, subject: string, text: string): Promise<void> {
-  const transporter = getTransporter();
-  if (!transporter) {
-    throw new Error('Email non configurata: imposta GMAIL_USER e GMAIL_APP_PASSWORD nelle variabili d\'ambiente');
-  }
-  const from = process.env.EMAIL_FROM || `FlipSide <${process.env.GMAIL_USER}>`;
-  await transporter.sendMail({ from, to, subject, text });
+async function sendTelegram(to: string, message: string): Promise<void> {
+  const client = await getTelegramClient();
+  await client.sendMessage(to, { message });
 }
 
 // ── Public routes ────────────────────────────────────────────────────────────
@@ -70,28 +74,27 @@ app.post('/api/sessions/:sessionId/gallery/request-otp', async (c) => {
   const session = queries.getSession.get(sessionId);
   if (!session) return c.json({ error: 'Sessione non trovata' }, 404);
   if (!session.gallery_folder_path) return c.json({ error: 'Galleria non configurata' }, 404);
-  if (!session.gallery_phone_numbers) return c.json({ error: 'Nessun indirizzo email configurato per questa galleria' }, 404);
+  if (!session.gallery_phone_numbers) return c.json({ error: 'Nessun numero Telegram configurato per questa galleria' }, 404);
 
   const otp = queries.generateGalleryOTP(sessionId);
-  const emails = session.gallery_phone_numbers.split(',').map((e: string) => e.trim()).filter(Boolean);
-  const subject = `Codice accesso galleria — ${session.label}`;
-  const text = `Il tuo codice per accedere alla galleria "${session.label}" è:\n\n${otp}\n\nValido per 5 minuti.`;
+  const recipients = session.gallery_phone_numbers.split(',').map((e: string) => e.trim()).filter(Boolean);
+  const message = `Il tuo codice per accedere alla galleria "${session.label}" è:\n\n*${otp}*\n\nValido per 5 minuti.`;
 
   const sendErrors: string[] = [];
   let lastError = '';
-  for (const email of emails) {
-    await sendEmail(email, subject, text).catch((err: Error) => {
+  for (const to of recipients) {
+    await sendTelegram(to, message).catch((err: Error) => {
       lastError = err.message;
-      console.error(`[Email] Errore invio a ${email}:`, err.message);
-      sendErrors.push(email);
+      console.error(`[Telegram] Errore invio a ${to}:`, err.message);
+      sendErrors.push(to);
     });
   }
 
-  if (sendErrors.length === emails.length) {
-    return c.json({ error: `Impossibile inviare email: ${lastError}` }, 500);
+  if (sendErrors.length === recipients.length) {
+    return c.json({ error: `Impossibile inviare OTP via Telegram: ${lastError}` }, 500);
   }
 
-  return c.json({ success: true, message: 'OTP inviato via email' });
+  return c.json({ success: true, message: 'OTP inviato via Telegram' });
 });
 
 app.post('/api/sessions/:sessionId/gallery/verify-otp', async (c) => {
@@ -318,19 +321,21 @@ admin.post('/buttons/:id/reset', (c) => {
   return c.json({ success: true });
 });
 
-admin.get('/email/status', (c) => {
-  const user = process.env.GMAIL_USER;
-  const pass = process.env.GMAIL_APP_PASSWORD;
-  if (!user || !pass) return c.json({ configured: false, error: 'GMAIL_USER o GMAIL_APP_PASSWORD non impostati' });
-  const from = process.env.EMAIL_FROM || `FlipSide <${user}>`;
-  return c.json({ configured: true, provider: 'Gmail', from });
+admin.get('/telegram/status', (c) => {
+  const apiId   = process.env.TELEGRAM_API_ID;
+  const apiHash = process.env.TELEGRAM_API_HASH;
+  const session = process.env.TELEGRAM_SESSION;
+  if (!apiId || !apiHash || !session) {
+    return c.json({ configured: false, error: 'Variabili TELEGRAM_API_ID, TELEGRAM_API_HASH e TELEGRAM_SESSION non impostate' });
+  }
+  return c.json({ configured: true });
 });
 
-admin.post('/email/test', async (c) => {
+admin.post('/telegram/test', async (c) => {
   const { to } = await c.req.json<{ to: string }>();
-  if (!to) return c.json({ error: 'Destinatario obbligatorio' }, 400);
+  if (!to) return c.json({ error: 'Destinatario obbligatorio (numero +39... o @username)' }, 400);
   try {
-    await sendEmail(to, 'Test email da FlipSide', 'Questo è un messaggio di test da FlipSide. ✓');
+    await sendTelegram(to, 'Messaggio di test da FlipSide ✓');
     return c.json({ success: true });
   } catch (err) {
     return c.json({ error: (err as Error).message }, 500);
