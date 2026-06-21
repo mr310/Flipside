@@ -34,8 +34,7 @@ function getTransporter(): nodemailer.Transporter | null {
 async function sendEmail(to: string, subject: string, text: string): Promise<void> {
   const transporter = getTransporter();
   if (!transporter) {
-    console.log(`[Email fallback] To: ${to} | Subject: ${subject} | Body: ${text}`);
-    return;
+    throw new Error('Email non configurata: imposta GMAIL_USER e GMAIL_APP_PASSWORD nelle variabili d\'ambiente');
   }
   const from = process.env.EMAIL_FROM || `FlipSide <${process.env.GMAIL_USER}>`;
   await transporter.sendMail({ from, to, subject, text });
