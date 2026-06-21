@@ -210,11 +210,11 @@ export default function AdminSessionEditor() {
             />
           </div>
           <div className="form-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
-            <label>Chat ID Telegram (separati da virgola)</label>
+            <label>Indirizzi email per OTP (separati da virgola)</label>
             <input
               value={galleryPhoneNumbers}
               onChange={(e) => setGalleryPhoneNumbers(e.target.value)}
-              placeholder="123456789, -987654321"
+              placeholder="mario@esempio.com, giulia@esempio.com"
             />
           </div>
         </div>

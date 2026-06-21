@@ -4,6 +4,7 @@ import { queries } from './db';
 import { createHash } from 'crypto';
 import { join, resolve, extname } from 'path';
 import { readdir } from 'fs/promises';
+import nodemailer from 'nodemailer';
 
 const DIST = join(process.cwd(), 'dist/client');
 
@@ -15,44 +16,29 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? 'admin123';
 const ADMIN_SECRET = process.env.ADMIN_SECRET ?? 'flipside-dev-secret';
 const VALID_TOKEN = createHash('sha256').update(ADMIN_PASSWORD + ADMIN_SECRET).digest('hex');
 
-// ── Telegram ─────────────────────────────────────────────────────────────────
-
-let telegramBotUsername: string | null = null;
-(async () => {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) return;
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
-    const data = await res.json() as { ok: boolean; result?: { username: string } };
-    if (data.ok && data.result?.username) {
-      telegramBotUsername = data.result.username;
-      console.log(`[Telegram] Bot pronto: @${telegramBotUsername}`);
-    }
-  } catch (err) {
-    console.error('[Telegram] Impossibile ottenere info bot:', err);
-  }
-})();
+// ── Email (Gmail SMTP) ───────────────────────────────────────────────────────
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.avif', '.tiff', '.tif']);
 
-async function sendTelegram(chatId: string, text: string): Promise<void> {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+let _transporter: nodemailer.Transporter | null = null;
 
-  if (!botToken) {
-    console.log(`[Telegram fallback] chat_id: ${chatId} | text: ${text}`);
+function getTransporter(): nodemailer.Transporter | null {
+  if (_transporter) return _transporter;
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) return null;
+  _transporter = nodemailer.createTransport({ service: 'gmail', auth: { user, pass } });
+  return _transporter;
+}
+
+async function sendEmail(to: string, subject: string, text: string): Promise<void> {
+  const transporter = getTransporter();
+  if (!transporter) {
+    console.log(`[Email fallback] To: ${to} | Subject: ${subject} | Body: ${text}`);
     return;
   }
-
-  const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { description?: string };
-    throw new Error(`Telegram error: ${err.description ?? res.statusText}`);
-  }
+  const from = process.env.EMAIL_FROM ?? `FlipSide <${process.env.GMAIL_USER}>`;
+  await transporter.sendMail({ from, to, subject, text });
 }
 
 // ── Public routes ────────────────────────────────────────────────────────────
@@ -80,42 +66,33 @@ app.get('/api/sessions/:sessionId/buttons/:type', (c) => {
   return c.json(btn);
 });
 
-app.get('/api/sessions/:sessionId/gallery/info', (c) => {
-  const session = queries.getSession.get(c.req.param('sessionId'));
-  if (!session) return c.json({ error: 'Non trovato' }, 404);
-  return c.json({
-    has_gallery: !!session.gallery_folder_path,
-    bot_username: telegramBotUsername,
-    bot_link: telegramBotUsername ? `https://t.me/${telegramBotUsername}` : null,
-  });
-});
-
 app.post('/api/sessions/:sessionId/gallery/request-otp', async (c) => {
   const sessionId = c.req.param('sessionId');
   const session = queries.getSession.get(sessionId);
   if (!session) return c.json({ error: 'Sessione non trovata' }, 404);
   if (!session.gallery_folder_path) return c.json({ error: 'Galleria non configurata' }, 404);
-  if (!session.gallery_phone_numbers) return c.json({ error: 'Nessun numero configurato per questa galleria' }, 404);
+  if (!session.gallery_phone_numbers) return c.json({ error: 'Nessun indirizzo email configurato per questa galleria' }, 404);
 
   const otp = queries.generateGalleryOTP(sessionId);
-  const chatIds = session.gallery_phone_numbers.split(',').map((p: string) => p.trim()).filter(Boolean);
-  const message = `Il tuo codice per la galleria "${session.label}" è: ${otp}\nValido per 5 minuti.`;
+  const emails = session.gallery_phone_numbers.split(',').map((e: string) => e.trim()).filter(Boolean);
+  const subject = `Codice accesso galleria — ${session.label}`;
+  const text = `Il tuo codice per accedere alla galleria "${session.label}" è:\n\n${otp}\n\nValido per 5 minuti.`;
 
   const sendErrors: string[] = [];
   let lastError = '';
-  for (const chatId of chatIds) {
-    await sendTelegram(chatId, message).catch((err: Error) => {
+  for (const email of emails) {
+    await sendEmail(email, subject, text).catch((err: Error) => {
       lastError = err.message;
-      console.error(`[Telegram] Errore invio a ${chatId}:`, err.message);
-      sendErrors.push(chatId);
+      console.error(`[Email] Errore invio a ${email}:`, err.message);
+      sendErrors.push(email);
     });
   }
 
-  if (sendErrors.length === chatIds.length) {
-    return c.json({ error: `Impossibile inviare via Telegram: ${lastError}` }, 500);
+  if (sendErrors.length === emails.length) {
+    return c.json({ error: `Impossibile inviare email: ${lastError}` }, 500);
   }
 
-  return c.json({ success: true, message: 'OTP inviato via Telegram' });
+  return c.json({ success: true, message: 'OTP inviato via email' });
 });
 
 app.post('/api/sessions/:sessionId/gallery/verify-otp', async (c) => {
@@ -342,24 +319,19 @@ admin.post('/buttons/:id/reset', (c) => {
   return c.json({ success: true });
 });
 
-admin.get('/telegram/status', async (c) => {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) return c.json({ configured: false, error: 'TELEGRAM_BOT_TOKEN non impostato' });
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
-    const data = await res.json() as { ok: boolean; result?: { username: string; first_name: string }; description?: string };
-    if (!data.ok) return c.json({ configured: true, ok: false, error: data.description });
-    return c.json({ configured: true, ok: true, bot: `@${data.result?.username} (${data.result?.first_name})`, bot_link: `https://t.me/${data.result?.username}` });
-  } catch (err) {
-    return c.json({ configured: true, ok: false, error: (err as Error).message });
-  }
+admin.get('/email/status', (c) => {
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) return c.json({ configured: false, error: 'GMAIL_USER o GMAIL_APP_PASSWORD non impostati' });
+  const from = process.env.EMAIL_FROM ?? `FlipSide <${user}>`;
+  return c.json({ configured: true, from });
 });
 
-admin.post('/telegram/test', async (c) => {
-  const { chat_id, message } = await c.req.json<{ chat_id: string; message?: string }>();
-  if (!chat_id) return c.json({ error: 'chat_id obbligatorio' }, 400);
+admin.post('/email/test', async (c) => {
+  const { to } = await c.req.json<{ to: string }>();
+  if (!to) return c.json({ error: 'Destinatario obbligatorio' }, 400);
   try {
-    await sendTelegram(chat_id, message ?? 'Test messaggio da FlipSide ✓');
+    await sendEmail(to, 'Test email da FlipSide', 'Questo è un messaggio di test da FlipSide. ✓');
     return c.json({ success: true });
   } catch (err) {
     return c.json({ error: (err as Error).message }, 500);

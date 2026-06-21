@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { requestGalleryOTP, verifyGalleryOTP, getGalleryPhotos, getGalleryInfo, type GalleryPhoto } from '../api';
+import { requestGalleryOTP, verifyGalleryOTP, getGalleryPhotos, type GalleryPhoto } from '../api';
 
 type Step = 'request' | 'verify' | 'gallery';
 
@@ -15,14 +15,6 @@ export default function GalleryPage() {
   const [photos, setPhotos] = useState<GalleryPhoto[]>([]);
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
-  const [botLink, setBotLink] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    getGalleryInfo(sessionId)
-      .then((info) => setBotLink(info.bot_link))
-      .catch(() => {});
-  }, [sessionId]);
 
   const handleRequestOTP = async () => {
     if (!sessionId) return;
@@ -85,29 +77,8 @@ export default function GalleryPage() {
 
       {step === 'request' && (
         <div className="button-editor">
-          {botLink && (
-            <div style={{
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: '8px',
-              padding: '1rem',
-              marginBottom: '1.25rem',
-            }}>
-              <p style={{ margin: '0 0 0.75rem', fontWeight: 600 }}>
-                Prima di continuare
-              </p>
-              <p style={{ margin: '0 0 0.75rem', color: 'var(--muted)', fontSize: '0.9rem' }}>
-                Per ricevere il codice OTP devi aver avviato il nostro bot Telegram almeno una volta.
-              </p>
-              <a href={botLink} target="_blank" rel="noopener noreferrer">
-                <button className="btn btn-ghost" style={{ width: '100%' }}>
-                  Apri il bot su Telegram →
-                </button>
-              </a>
-            </div>
-          )}
           <p style={{ margin: '0 0 1rem', color: 'var(--muted)' }}>
-            Clicca il pulsante per ricevere il codice OTP via Telegram.
+            Riceverai un codice OTP via email per accedere alla galleria.
           </p>
           {error && <div style={{ color: 'var(--danger)', marginBottom: '1rem' }}>{error}</div>}
           <button className="btn btn-primary" onClick={handleRequestOTP} disabled={loading}>
@@ -119,7 +90,7 @@ export default function GalleryPage() {
       {step === 'verify' && (
         <div className="button-editor">
           <p style={{ margin: 0, color: 'var(--muted)', marginBottom: '1rem' }}>
-            Inserisci il codice OTP ricevuto via Telegram.
+            Inserisci il codice OTP ricevuto via email.
           </p>
           {error && <div style={{ color: 'var(--danger)', marginBottom: '1rem' }}>{error}</div>}
           <div className="form-group">

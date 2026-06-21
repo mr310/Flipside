@@ -67,15 +67,6 @@ export const clickQR = (sessionId: string, type: string) =>
     json<{ success: boolean }>(r),
   );
 
-export interface GalleryInfo {
-  has_gallery: boolean;
-  bot_username: string | null;
-  bot_link: string | null;
-}
-
-export const getGalleryInfo = (sessionId: string) =>
-  fetch(`/api/sessions/${sessionId}/gallery/info`).then((r) => json<GalleryInfo>(r));
-
 export const requestGalleryOTP = (sessionId: string) =>
   fetch(`/api/sessions/${sessionId}/gallery/request-otp`, {
     method: 'POST',
@@ -188,22 +179,20 @@ export const adminResetButton = (id: string) =>
     headers: authHeader(),
   }).then((r) => json<{ success: boolean }>(r));
 
-export interface TelegramStatus {
+export interface EmailStatus {
   configured: boolean;
-  ok?: boolean;
-  bot?: string;
-  bot_link?: string;
+  from?: string;
   error?: string;
 }
 
-export const adminTelegramStatus = () =>
-  fetch('/api/admin/telegram/status', { headers: authHeader() }).then((r) =>
-    json<TelegramStatus>(r),
+export const adminEmailStatus = () =>
+  fetch('/api/admin/email/status', { headers: authHeader() }).then((r) =>
+    json<EmailStatus>(r),
   );
 
-export const adminTelegramTest = (chat_id: string) =>
-  fetch('/api/admin/telegram/test', {
+export const adminEmailTest = (to: string) =>
+  fetch('/api/admin/email/test', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeader() },
-    body: JSON.stringify({ chat_id }),
+    body: JSON.stringify({ to }),
   }).then((r) => json<{ success: boolean } | { error: string }>(r));
