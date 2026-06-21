@@ -187,3 +187,23 @@ export const adminResetButton = (id: string) =>
     method: 'POST',
     headers: authHeader(),
   }).then((r) => json<{ success: boolean }>(r));
+
+export interface TelegramStatus {
+  configured: boolean;
+  ok?: boolean;
+  bot?: string;
+  bot_link?: string;
+  error?: string;
+}
+
+export const adminTelegramStatus = () =>
+  fetch('/api/admin/telegram/status', { headers: authHeader() }).then((r) =>
+    json<TelegramStatus>(r),
+  );
+
+export const adminTelegramTest = (chat_id: string) =>
+  fetch('/api/admin/telegram/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeader() },
+    body: JSON.stringify({ chat_id }),
+  }).then((r) => json<{ success: boolean } | { error: string }>(r));

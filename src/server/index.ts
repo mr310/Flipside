@@ -101,16 +101,18 @@ app.post('/api/sessions/:sessionId/gallery/request-otp', async (c) => {
   const chatIds = session.gallery_phone_numbers.split(',').map((p: string) => p.trim()).filter(Boolean);
   const message = `Il tuo codice per la galleria "${session.label}" è: ${otp}\nValido per 5 minuti.`;
 
-  const errors: string[] = [];
+  const sendErrors: string[] = [];
+  let lastError = '';
   for (const chatId of chatIds) {
     await sendTelegram(chatId, message).catch((err: Error) => {
+      lastError = err.message;
       console.error(`[Telegram] Errore invio a ${chatId}:`, err.message);
-      errors.push(chatId);
+      sendErrors.push(chatId);
     });
   }
 
-  if (errors.length === chatIds.length) {
-    return c.json({ error: 'Impossibile inviare il messaggio Telegram. Riprova.' }, 500);
+  if (sendErrors.length === chatIds.length) {
+    return c.json({ error: `Impossibile inviare via Telegram: ${lastError}` }, 500);
   }
 
   return c.json({ success: true, message: 'OTP inviato via Telegram' });
@@ -338,6 +340,30 @@ admin.post('/sessions/:id/reset', (c) => {
 admin.post('/buttons/:id/reset', (c) => {
   queries.resetButton.run(c.req.param('id'));
   return c.json({ success: true });
+});
+
+admin.get('/telegram/status', async (c) => {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return c.json({ configured: false, error: 'TELEGRAM_BOT_TOKEN non impostato' });
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+    const data = await res.json() as { ok: boolean; result?: { username: string; first_name: string }; description?: string };
+    if (!data.ok) return c.json({ configured: true, ok: false, error: data.description });
+    return c.json({ configured: true, ok: true, bot: `@${data.result?.username} (${data.result?.first_name})`, bot_link: `https://t.me/${data.result?.username}` });
+  } catch (err) {
+    return c.json({ configured: true, ok: false, error: (err as Error).message });
+  }
+});
+
+admin.post('/telegram/test', async (c) => {
+  const { chat_id, message } = await c.req.json<{ chat_id: string; message?: string }>();
+  if (!chat_id) return c.json({ error: 'chat_id obbligatorio' }, 400);
+  try {
+    await sendTelegram(chat_id, message ?? 'Test messaggio da FlipSide ✓');
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
 });
 
 app.route('/api/admin', admin);

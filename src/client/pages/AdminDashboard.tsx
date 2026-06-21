@@ -7,8 +7,11 @@ import {
   adminResetSession,
   adminCreateSession,
   adminDuplicateSession,
+  adminTelegramStatus,
+  adminTelegramTest,
   type Session,
   type Visit,
+  type TelegramStatus,
 } from '../api';
 
 interface NewSessionForm { date: string; label: string }
@@ -21,6 +24,10 @@ export default function AdminDashboard() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<NewSessionForm>({ date: '', label: '' });
   const [saving, setSaving] = useState(false);
+  const [tgStatus, setTgStatus] = useState<TelegramStatus | null>(null);
+  const [tgTestId, setTgTestId] = useState('');
+  const [tgTestResult, setTgTestResult] = useState<string | null>(null);
+  const [tgTesting, setTgTesting] = useState(false);
   const navigate = useNavigate();
 
   const load = async () => {
@@ -38,7 +45,10 @@ export default function AdminDashboard() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    adminTelegramStatus().then(setTgStatus).catch(() => {});
+  }, []);
 
   const handleCreate = async () => {
     if (!form.date || !form.label) return;
@@ -67,6 +77,20 @@ export default function AdminDashboard() {
   const handleDuplicate = async (id: string) => {
     await adminDuplicateSession(id);
     load();
+  };
+
+  const handleTgTest = async () => {
+    if (!tgTestId.trim()) return;
+    setTgTesting(true);
+    setTgTestResult(null);
+    try {
+      const res = await adminTelegramTest(tgTestId.trim());
+      setTgTestResult('success' in res ? '✓ Messaggio inviato!' : `✗ ${(res as { error: string }).error}`);
+    } catch (err) {
+      setTgTestResult(`✗ ${(err as Error).message}`);
+    } finally {
+      setTgTesting(false);
+    }
   };
 
   const logout = () => {
@@ -117,6 +141,51 @@ export default function AdminDashboard() {
           </p>
         </div>
       </div>
+
+      {tgStatus && (
+        <div className="button-editor" style={{ marginBottom: '1.5rem' }}>
+          <div className="button-editor-header">
+            <span className="button-editor-title">Telegram</span>
+            <span className={`status-badge ${tgStatus.ok ? 'status-ok' : 'status-disabled'}`}>
+              {!tgStatus.configured ? 'Token mancante' : tgStatus.ok ? tgStatus.bot : 'Errore'}
+            </span>
+          </div>
+
+          {!tgStatus.configured && (
+            <p style={{ margin: '0.5rem 0 0', color: 'var(--danger)', fontSize: '0.85rem' }}>
+              Imposta <code>TELEGRAM_BOT_TOKEN</code> nelle variabili d'ambiente Railway.
+            </p>
+          )}
+          {tgStatus.configured && !tgStatus.ok && (
+            <p style={{ margin: '0.5rem 0 0', color: 'var(--danger)', fontSize: '0.85rem' }}>
+              {tgStatus.error}
+            </p>
+          )}
+          {tgStatus.ok && (
+            <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '160px' }}>
+                <label>Chat ID di test</label>
+                <input
+                  value={tgTestId}
+                  onChange={(e) => setTgTestId(e.target.value)}
+                  placeholder="123456789"
+                />
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={handleTgTest} disabled={tgTesting}>
+                {tgTesting ? 'Invio...' : 'Invia test'}
+              </button>
+              {tgTestResult && (
+                <span style={{
+                  fontSize: '0.85rem',
+                  color: tgTestResult.startsWith('✓') ? 'var(--accent)' : 'var(--danger)',
+                }}>
+                  {tgTestResult}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <p className="loading">Caricamento...</p>
