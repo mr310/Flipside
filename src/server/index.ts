@@ -4,8 +4,6 @@ import { queries } from './db';
 import { createHash } from 'crypto';
 import { join, resolve, extname } from 'path';
 import { readdir } from 'fs/promises';
-import { TelegramClient } from 'telegram';
-import { StringSession } from 'telegram/sessions';
 
 const DIST = join(process.cwd(), 'dist/client');
 
@@ -17,31 +15,40 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? 'admin123';
 const ADMIN_SECRET = process.env.ADMIN_SECRET ?? 'flipside-dev-secret';
 const VALID_TOKEN = createHash('sha256').update(ADMIN_PASSWORD + ADMIN_SECRET).digest('hex');
 
-// ── Telegram (GramJS userbot) ────────────────────────────────────────────────
+// ── apisms.it SMS ────────────────────────────────────────────────────────────
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.avif', '.tiff', '.tif']);
 
-let _tgClient: TelegramClient | null = null;
+async function sendSMS(to: string, message: string): Promise<void> {
+  const login    = process.env.APISMS_LOGIN;
+  const password = process.env.APISMS_PASSWORD;
+  const idApi    = process.env.APISMS_ID_API;
 
-async function getTelegramClient(): Promise<TelegramClient> {
-  if (_tgClient?.connected) return _tgClient;
-
-  const apiId   = parseInt(process.env.TELEGRAM_API_ID   ?? '');
-  const apiHash = process.env.TELEGRAM_API_HASH ?? '';
-  const session = process.env.TELEGRAM_SESSION  ?? '';
-
-  if (!apiId || !apiHash || !session) {
-    throw new Error('Telegram non configurato: imposta TELEGRAM_API_ID, TELEGRAM_API_HASH e TELEGRAM_SESSION');
+  if (!login || !password || !idApi) {
+    console.log(`[SMS fallback] A ${to}: ${message}`);
+    return;
   }
 
-  _tgClient = new TelegramClient(new StringSession(session), apiId, apiHash, { connectionRetries: 3 });
-  await _tgClient.connect();
-  return _tgClient;
-}
+  const sender      = process.env.APISMS_SENDER ?? 'FlipSide';
+  const destination = to.replace(/^\+/, '');
+  const senderB64 = btoa(sender);
+  const bodyB64   = btoa(message);
 
-async function sendTelegram(to: string, message: string): Promise<void> {
-  const client = await getTelegramClient();
-  await client.sendMessage(to, { message });
+  const url = new URL('https://secure.apisms.it/http/send_sms');
+  url.searchParams.set('authlogin',   login);
+  url.searchParams.set('authpasswd',  password);
+  url.searchParams.set('sender',      senderB64);
+  url.searchParams.set('body',        bodyB64);
+  url.searchParams.set('destination', destination);
+  url.searchParams.set('id_api',      idApi);
+
+  const res = await fetch(url.toString());
+
+  const text = await res.text();
+  console.log('[SMS] risposta apisms.it:', JSON.stringify(text));
+  if (text.trimStart().startsWith('-')) {
+    throw new Error(`apisms.it: ${text.trim()}`);
+  }
 }
 
 // ── Public routes ────────────────────────────────────────────────────────────
@@ -74,27 +81,32 @@ app.post('/api/sessions/:sessionId/gallery/request-otp', async (c) => {
   const session = queries.getSession.get(sessionId);
   if (!session) return c.json({ error: 'Sessione non trovata' }, 404);
   if (!session.gallery_folder_path) return c.json({ error: 'Galleria non configurata' }, 404);
-  if (!session.gallery_phone_numbers) return c.json({ error: 'Nessun numero Telegram configurato per questa galleria' }, 404);
+
+  const recipientEnv = process.env.APISMS_RECIPIENT;
+  if (!recipientEnv) return c.json({ error: 'APISMS_RECIPIENT non configurato' }, 500);
+
+  const recipients = recipientEnv.split(',').map(r => r.trim()).filter(Boolean);
+  const RECIPIENT_MAP: Record<string, number> = { lorena: 0, max: 1 };
+
+  const body = await c.req.json<{ recipient?: string }>().catch(() => ({}));
+  const key = (body.recipient ?? '').toLowerCase();
+  const idx = RECIPIENT_MAP[key];
+  if (idx === undefined) return c.json({ error: 'Destinatario non valido (lorena o max)' }, 400);
+
+  const phone = recipients[idx];
+  if (!phone) return c.json({ error: `Numero non configurato per ${key}` }, 500);
 
   const otp = queries.generateGalleryOTP(sessionId);
-  const recipients = session.gallery_phone_numbers.split(',').map((e: string) => e.trim()).filter(Boolean);
-  const message = `Il tuo codice per accedere alla galleria "${session.label}" è:\n\n*${otp}*\n\nValido per 5 minuti.`;
+  const message = `FlipSide: codice galleria ${otp} (valido 5 min)`;
 
-  const sendErrors: string[] = [];
-  let lastError = '';
-  for (const to of recipients) {
-    await sendTelegram(to, message).catch((err: Error) => {
-      lastError = err.message;
-      console.error(`[Telegram] Errore invio a ${to}:`, err.message);
-      sendErrors.push(to);
-    });
+  try {
+    await sendSMS(phone, message);
+  } catch (err) {
+    console.error('[SMS] Errore invio OTP:', (err as Error).message);
+    return c.json({ error: `Impossibile inviare OTP via SMS: ${(err as Error).message}` }, 500);
   }
 
-  if (sendErrors.length === recipients.length) {
-    return c.json({ error: `Impossibile inviare OTP via Telegram: ${lastError}` }, 500);
-  }
-
-  return c.json({ success: true, message: 'OTP inviato via Telegram' });
+  return c.json({ success: true, message: 'OTP inviato via SMS' });
 });
 
 app.post('/api/sessions/:sessionId/gallery/verify-otp', async (c) => {
@@ -321,21 +333,33 @@ admin.post('/buttons/:id/reset', (c) => {
   return c.json({ success: true });
 });
 
-admin.get('/telegram/status', (c) => {
-  const apiId   = process.env.TELEGRAM_API_ID;
-  const apiHash = process.env.TELEGRAM_API_HASH;
-  const session = process.env.TELEGRAM_SESSION;
-  if (!apiId || !apiHash || !session) {
-    return c.json({ configured: false, error: 'Variabili TELEGRAM_API_ID, TELEGRAM_API_HASH e TELEGRAM_SESSION non impostate' });
+admin.get('/sms/status', async (c) => {
+  const login    = process.env.APISMS_LOGIN;
+  const password = process.env.APISMS_PASSWORD;
+  const idApi    = process.env.APISMS_ID_API;
+  if (!login || !password || !idApi) {
+    return c.json({ configured: false, error: 'Imposta APISMS_LOGIN, APISMS_PASSWORD e APISMS_ID_API' });
   }
-  return c.json({ configured: true });
+  try {
+    const url = new URL('https://secure.apisms.it/http/get_credit');
+    url.searchParams.set('authlogin',  login);
+    url.searchParams.set('authpasswd', password);
+    const res  = await fetch(url.toString());
+    const text = (await res.text()).trim();
+    if (text.startsWith('-')) {
+      return c.json({ configured: false, error: `apisms.it: ${text}` });
+    }
+    return c.json({ configured: true, credit: text });
+  } catch (err) {
+    return c.json({ configured: false, error: (err as Error).message });
+  }
 });
 
-admin.post('/telegram/test', async (c) => {
+admin.post('/sms/test', async (c) => {
   const { to } = await c.req.json<{ to: string }>();
-  if (!to) return c.json({ error: 'Destinatario obbligatorio (numero +39... o @username)' }, 400);
+  if (!to) return c.json({ error: 'Destinatario obbligatorio (numero E.164, es. +393001234567)' }, 400);
   try {
-    await sendTelegram(to, 'Messaggio di test da FlipSide ✓');
+    await sendSMS(to, 'Messaggio di test da FlipSide');
     return c.json({ success: true });
   } catch (err) {
     return c.json({ error: (err as Error).message }, 500);

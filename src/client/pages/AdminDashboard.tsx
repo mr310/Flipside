@@ -7,11 +7,11 @@ import {
   adminResetSession,
   adminCreateSession,
   adminDuplicateSession,
-  adminTelegramStatus,
-  adminTelegramTest,
+  adminSmsStatus,
+  adminSmsTest,
   type Session,
   type Visit,
-  type TelegramStatus,
+  type SmsStatus,
 } from '../api';
 
 interface NewSessionForm { date: string; label: string }
@@ -24,10 +24,10 @@ export default function AdminDashboard() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<NewSessionForm>({ date: '', label: '' });
   const [saving, setSaving] = useState(false);
-  const [tgStatus, setTgStatus] = useState<TelegramStatus | null>(null);
-  const [tgTestAddr, setTgTestAddr] = useState('');
-  const [tgTestResult, setTgTestResult] = useState<string | null>(null);
-  const [tgTesting, setTgTesting] = useState(false);
+  const [smsStatus, setSmsStatus] = useState<SmsStatus | null>(null);
+  const [smsTestAddr, setSmsTestAddr] = useState('');
+  const [smsTestResult, setSmsTestResult] = useState<string | null>(null);
+  const [smsTesting, setSmsTesting] = useState(false);
   const navigate = useNavigate();
 
   const load = async () => {
@@ -47,7 +47,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     load();
-    adminTelegramStatus().then(setTgStatus).catch(() => {});
+    adminSmsStatus().then(setSmsStatus).catch(() => {});
   }, []);
 
   const handleCreate = async () => {
@@ -79,17 +79,17 @@ export default function AdminDashboard() {
     load();
   };
 
-  const handleTgTest = async () => {
-    if (!tgTestAddr.trim()) return;
-    setTgTesting(true);
-    setTgTestResult(null);
+  const handleSmsTest = async () => {
+    if (!smsTestAddr.trim()) return;
+    setSmsTesting(true);
+    setSmsTestResult(null);
     try {
-      const res = await adminTelegramTest(tgTestAddr.trim());
-      setTgTestResult('success' in res ? '✓ Messaggio inviato!' : `✗ ${(res as { error: string }).error}`);
+      const res = await adminSmsTest(smsTestAddr.trim());
+      setSmsTestResult('success' in res ? '✓ Messaggio inviato!' : `✗ ${(res as { error: string }).error}`);
     } catch (err) {
-      setTgTestResult(`✗ ${(err as Error).message}`);
+      setSmsTestResult(`✗ ${(err as Error).message}`);
     } finally {
-      setTgTesting(false);
+      setSmsTesting(false);
     }
   };
 
@@ -142,40 +142,40 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {tgStatus && (
+      {smsStatus && (
         <div className="button-editor" style={{ marginBottom: '1.5rem' }}>
           <div className="button-editor-header">
-            <span className="button-editor-title">Telegram</span>
-            <span className={`status-badge ${tgStatus.configured ? 'status-ok' : 'status-disabled'}`}>
-              {tgStatus.configured ? 'Configurato' : 'Non configurato'}
+            <span className="button-editor-title">SMS</span>
+            <span className={`status-badge ${smsStatus.configured ? 'status-ok' : 'status-disabled'}`}>
+              {smsStatus.configured ? (smsStatus.sandbox ? 'Sandbox' : 'Configurato') : 'Non configurato'}
             </span>
           </div>
 
-          {!tgStatus.configured && (
+          {!smsStatus.configured && (
             <p style={{ margin: '0.5rem 0 0', color: 'var(--danger)', fontSize: '0.85rem' }}>
-              {tgStatus.error ?? 'Imposta TELEGRAM_API_ID, TELEGRAM_API_HASH e TELEGRAM_SESSION nelle variabili d\'ambiente.'}
+              {smsStatus.error ?? 'Imposta OPENAPI_SMS_TOKEN nelle variabili d\'ambiente.'}
             </p>
           )}
-          {tgStatus.configured && (
+          {smsStatus.configured && (
             <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '200px' }}>
-                <label>Destinatario di test</label>
+                <label>Numero di test (E.164)</label>
                 <input
                   type="text"
-                  value={tgTestAddr}
-                  onChange={(e) => setTgTestAddr(e.target.value)}
-                  placeholder="+393001234567 o @username"
+                  value={smsTestAddr}
+                  onChange={(e) => setSmsTestAddr(e.target.value)}
+                  placeholder="+393001234567"
                 />
               </div>
-              <button className="btn btn-ghost btn-sm" onClick={handleTgTest} disabled={tgTesting}>
-                {tgTesting ? 'Invio...' : 'Invia test'}
+              <button className="btn btn-ghost btn-sm" onClick={handleSmsTest} disabled={smsTesting}>
+                {smsTesting ? 'Invio...' : 'Invia test'}
               </button>
-              {tgTestResult && (
+              {smsTestResult && (
                 <span style={{
                   fontSize: '0.85rem',
-                  color: tgTestResult.startsWith('✓') ? 'var(--accent)' : 'var(--danger)',
+                  color: smsTestResult.startsWith('✓') ? 'var(--accent)' : 'var(--danger)',
                 }}>
-                  {tgTestResult}
+                  {smsTestResult}
                 </span>
               )}
             </div>

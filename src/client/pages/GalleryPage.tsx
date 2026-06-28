@@ -11,17 +11,18 @@ export default function GalleryPage() {
   const [error, setError] = useState<string | null>(null);
   const [otp, setOtp] = useState('');
   const [galleryToken, setGalleryToken] = useState<string | null>(null);
+  const [recipient, setRecipient] = useState<'lorena' | 'max' | null>(null);
   const [externalUrl, setExternalUrl] = useState<string | null>(null);
   const [photos, setPhotos] = useState<GalleryPhoto[]>([]);
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
 
   const handleRequestOTP = async () => {
-    if (!sessionId) return;
+    if (!sessionId || !recipient) return;
     setLoading(true);
     setError(null);
     try {
-      await requestGalleryOTP(sessionId);
+      await requestGalleryOTP(sessionId, recipient);
       setStep('verify');
     } catch (err) {
       setError((err as Error).message || 'Errore nella richiesta OTP');
@@ -78,10 +79,24 @@ export default function GalleryPage() {
       {step === 'request' && (
         <div className="button-editor">
           <p style={{ margin: '0 0 1rem', color: 'var(--muted)' }}>
-            Riceverai un codice OTP via Telegram per accedere alla galleria.
+            A chi vuoi inviare il codice OTP?
           </p>
+          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
+            <button
+              className={`btn ${recipient === 'lorena' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setRecipient('lorena')}
+            >
+              Lorena
+            </button>
+            <button
+              className={`btn ${recipient === 'max' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setRecipient('max')}
+            >
+              Max
+            </button>
+          </div>
           {error && <div style={{ color: 'var(--danger)', marginBottom: '1rem' }}>{error}</div>}
-          <button className="btn btn-primary" onClick={handleRequestOTP} disabled={loading}>
+          <button className="btn btn-primary" onClick={handleRequestOTP} disabled={loading || !recipient}>
             {loading ? 'Invio...' : 'Richiedi OTP'}
           </button>
         </div>
@@ -90,7 +105,7 @@ export default function GalleryPage() {
       {step === 'verify' && (
         <div className="button-editor">
           <p style={{ margin: 0, color: 'var(--muted)', marginBottom: '1rem' }}>
-            Inserisci il codice OTP ricevuto via Telegram.
+            Inserisci il codice OTP ricevuto via SMS.
           </p>
           {error && <div style={{ color: 'var(--danger)', marginBottom: '1rem' }}>{error}</div>}
           <div className="form-group">

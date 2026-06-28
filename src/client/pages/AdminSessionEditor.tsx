@@ -210,11 +210,11 @@ export default function AdminSessionEditor() {
             />
           </div>
           <div className="form-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
-            <label>Numeri Telegram per OTP (separati da virgola)</label>
+            <label>Numeri di telefono per OTP SMS (separati da virgola, formato E.164)</label>
             <input
               value={galleryPhoneNumbers}
               onChange={(e) => setGalleryPhoneNumbers(e.target.value)}
-              placeholder="+393001234567, @username"
+              placeholder="+393001234567, +393331234567"
             />
           </div>
         </div>

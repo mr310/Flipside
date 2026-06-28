@@ -67,10 +67,11 @@ export const clickQR = (sessionId: string, type: string) =>
     json<{ success: boolean }>(r),
   );
 
-export const requestGalleryOTP = (sessionId: string) =>
+export const requestGalleryOTP = (sessionId: string, recipient: 'lorena' | 'max') =>
   fetch(`/api/sessions/${sessionId}/gallery/request-otp`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipient }),
   }).then((r) => json<{ success: boolean; message: string }>(r));
 
 export const verifyGalleryOTP = (sessionId: string, otp_code: string) =>
@@ -179,18 +180,19 @@ export const adminResetButton = (id: string) =>
     headers: authHeader(),
   }).then((r) => json<{ success: boolean }>(r));
 
-export interface TelegramStatus {
+export interface SmsStatus {
   configured: boolean;
+  sandbox?: boolean;
   error?: string;
 }
 
-export const adminTelegramStatus = () =>
-  fetch('/api/admin/telegram/status', { headers: authHeader() }).then((r) =>
-    json<TelegramStatus>(r),
+export const adminSmsStatus = () =>
+  fetch('/api/admin/sms/status', { headers: authHeader() }).then((r) =>
+    json<SmsStatus>(r),
   );
 
-export const adminTelegramTest = (to: string) =>
-  fetch('/api/admin/telegram/test', {
+export const adminSmsTest = (to: string) =>
+  fetch('/api/admin/sms/test', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeader() },
     body: JSON.stringify({ to }),
